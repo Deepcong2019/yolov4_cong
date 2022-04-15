@@ -1,5 +1,5 @@
 # yolov4_cong
-yolov4
+yolov4  
 1、data_aug.py:原图像直接resize获得一个样本，，然后镜像获得一张样本。  
 2、get_random_data.py: 不使用mosaic时，使用的数据增强流程：随机缩放paste到416*416的灰度图上；随机确定是否镜像；色域扰动。  
 3、get_random_data_mosaic.py: 使用mosaic数据增强。  
