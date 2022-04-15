@@ -6,7 +6,7 @@
 4、image_process.py: yolov4读入图像的两种处理方式。  
 5、image_random_scale.py: 随机缩放paste到416*416的灰度图上.  
 6、infer.py / infer_detail.py: 图像预处理---输入网络----网络输出流程的直观结果。  
-7、model.py: 纯净的网络结构代码。
+7、model.py: 纯净的网络结构代码。  
 8、model_loss.py: 单纯推理一张图片和真实标签的loss计算直观过程。  
 9、multiput.py: 预测时输入多张图片同时预测。  
 10、preprocess_images_boxes.py: 制作真是标签y_true的直观流程。  
