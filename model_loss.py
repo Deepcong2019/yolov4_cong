@@ -321,6 +321,7 @@ def yolo_loss(args, input_shape, anchors, anchors_mask, num_classes, ignore_thre
             # -----------------------------------------------------------#
             #   best_iou    13,13,3 每个特征点与真实框的最大重合程度
             # -----------------------------------------------------------#
+            #选出最大的iou
             best_iou = K.max(iou, axis=-1)
 
             # -----------------------------------------------------------#
@@ -350,13 +351,13 @@ def yolo_loss(args, input_shape, anchors, anchors_mask, num_classes, ignore_thre
         #   真实框越大，比重越小，小框的比重更大。
         # -----------------------------------------------------------#
         box_loss_scale = 2 - y_true[l][..., 2:3] * y_true[l][..., 3:4]
-
+        # box_loss_scale:(1,52,52,3,1)
         # -----------------------------------------------------------#
         #   计算Ciou loss
         # -----------------------------------------------------------#
         raw_true_box = y_true[l][..., 0:4]
-        ciou = box_ciou(pred_box, raw_true_box)
-        ciou_loss = object_mask * box_loss_scale * (1 - ciou)
+        ciou = box_ciou(pred_box, raw_true_box) # (1,52,52,3,1)
+        ciou_loss = object_mask * box_loss_scale * (1 - ciou) # (1,52,52,3,1)
 
         # ------------------------------------------------------------------------------#
         #   如果该位置本来有框，那么计算1与置信度的交叉熵
@@ -390,13 +391,18 @@ def yolo_loss(args, input_shape, anchors, anchors_mask, num_classes, ignore_thre
 
 
 
-class_path = 'model_data/my_class.txt'
-model_path = 'model_data/ep100-loss15.533-val_loss15.416.h5'
-img_path = '111.jpg'
+
+
+
+
+
+
+class_path = 'model_data/coco_classes.txt'
+model_path = 'model_data/yolo4_weight.h5'
 anchors_path = 'model_data/yolo_anchors.txt'
 max_boxes = 100   # 最大框的数量
 confidence = 0.5  #   只有得分大于置信度的预测框会被保留下来
-nms_iou = 0.3     #   非极大抑制所用到的nms_iou大小
+nms_iou = 0.5     #   非极大抑制所用到的nms_iou大小
 #   该变量用于控制是否使用letterbox_image对输入图像进行不失真的resize，
 #   在多次测试后，发现关闭letterbox_image直接resize的效果更好
 # ---------------------------------------------------------------------#
@@ -406,8 +412,10 @@ anchors_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
 class_names, num_classes = get_classes(class_path)
 anchors_all, num_anchors = get_anchors(anchors_path)
 
+annotation_line = '/Users/cong/yolov4-keras-master/VOCdevkit/VOC2007/JPEGImages/007826.jpg 80,217,320,273,10 197,193,257,326,8 258,180,312,314,8 10,195,93,358,8 82,252,243,372,8\n'
+line = annotation_line.split()
+image = Image.open(line[0])
 print('names:', class_names)
-image = Image.open(img_path)
 image = cvtColor(image)    # print('image_shape:', np.shape(image))# image_shape: (1080, 1920, 3)
 image_data = resize_image(image, input_shape, letterbox_image=False)
 #   添加上batch_size维度，并进行归一化,
@@ -416,112 +424,31 @@ image_data = np.expand_dims(preprocess_input(np.array(image_data, dtype='float32
 #print(image_data.shape) (1, 416, 416, 3)
 # 加载模型
 model = yolo_body((None, None, 3), anchors_mask, num_classes)
-model.summary()
+# model.summary()
 model.load_weights(model_path)
 model_output = model.predict(image_data)
-print('model:', model)
+# print('model:', model)
+# 以上为模型推理的结果
 
 
-# 找出该图片的y_true
-# annotation_line = '/Users/cong/yolov4-keras-master/VOCdevkit/VOC2007/JPEGImages/007826.jpg 80,217,320,273,10 197,193,257,326,8 258,180,312,314,8 10,195,93,358,8 82,252,243,372,8\n'
-
-
-annotation_line = '111.jpg 633,328,842,503,0 43,472,130,567,1 1386,636,1539,762,1\n'
-line = annotation_line.split()
-image = Image.open(line[0])
-# cvtColor函数,,比如说截图。
-if len(np.shape(image)) == 3 and np.shape(image)[2] == 3:
-    image = image
-else:
-    image = image.convert('RGB')
-#   获得图像的高宽与目标高宽
+###########################################################
+# 以下找出该图片的y_true
 iw, ih = image.size
 h, w = input_shape
 #   获得预测框, int向下取整, box.split(','): ['80', '217', '320', '273', '10']
 box = np.array([np.array(list(map(int, box.split(',')))) for box in line[1:]])
 
-# random ===========================================
-# 多余部分加上灰度条//翻转//色域扭曲
+
 # anchors_mask
 anchors_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
-classes_path = 'model_data/my_class.txt'
-anchors_path = 'model_data/yolo_anchors.txt'
-class_names, num_classes = get_classes(classes_path)
-anchors, num_anchors = get_anchors(anchors_path)
-image_datas = []
-box_datas = []
-if True:
-    jitter = .3
-    hue = .1
-    sat = 1.5
-    val = 1.5
-    new_ar = w / h * rand(1 - jitter, 1 + jitter) / rand(1 - jitter, 1 + jitter)
-    scale = rand(.25, 2)
-    if new_ar < 1:
-        nh = int(scale * h)
-        nw = int(nh * new_ar)
-    else:
-        nw = int(scale * w)
-        nh = int(nw / new_ar)
-    image = image.resize((nw, nh), Image.BICUBIC)
 
-    # ------------------------------------------#
-    #   将图像多余的部分加上灰条
-    # ------------------------------------------#
-    dx = int(rand(0, w - nw))
-    dy = int(rand(0, h - nh))
-    new_image = Image.new('RGB', (w, h), (128, 128, 128))
-    new_image.show()
-    new_image.paste(image, (dx, dy))
-    image = new_image
-    image.show()
-
-    # ------------------------------------------#
-    #   翻转图像
-    # ------------------------------------------#
-    flip = rand() < .5
-    if flip: image = image.transpose(Image.FLIP_LEFT_RIGHT)  # 左右翻转
-
-    # ------------------------------------------#
-    #   色域扭曲 RGB==>HSV==>RGB
-    # ------------------------------------------#
-    hue = rand(-hue, hue)
-    sat = rand(1, sat) if rand() < .5 else 1 / rand(1, sat)
-    val = rand(1, val) if rand() < .5 else 1 / rand(1, val)
-    x = cv2.cvtColor(np.array(image, np.float32) / 255, cv2.COLOR_RGB2HSV)
-    x[..., 0] += hue * 360
-    x[..., 0][x[..., 0] > 1] -= 1
-    x[..., 0][x[..., 0] < 0] += 1
-    x[..., 1] *= sat
-    x[..., 2] *= val
-    x[x[:, :, 0] > 360, 0] = 360
-    x[:, :, 1:][x[:, :, 1:] > 1] = 1
-    x[x < 0] = 0
-    image_data = cv2.cvtColor(x, cv2.COLOR_HSV2RGB) * 255  # numpy array, 0 to 1
-
-    # ---------------------------------#
-    #   对真实框进行调整
-    # ---------------------------------#
-    box_data = np.zeros((max_boxes, 5))
-    if len(box) > 0:
-        np.random.shuffle(box)
-        box[:, [0, 2]] = box[:, [0, 2]] * nw / iw + dx
-        box[:, [1, 3]] = box[:, [1, 3]] * nh / ih + dy
-        if flip: box[:, [0, 2]] = w - box[:, [2, 0]]
-        box[:, 0:2][box[:, 0:2] < 0] = 0
-        box[:, 2][box[:, 2] > w] = w
-        box[:, 3][box[:, 3] > h] = h
-        box_w = box[:, 2] - box[:, 0]
-        box_h = box[:, 3] - box[:, 1]
-        box = box[np.logical_and(box_w > 1, box_h > 1)]  # discard invalid box
-        if len(box) > max_boxes: box = box[:max_boxes]
-        box_data[:len(box)] = box
-
-    image_datas.append(np.array(image_data)/255.0)
-    box_datas.append(box_data)
-
-image_datas_array = np.array(image_datas)
-box_datas_array = np.array(box_datas)
+box_data = np.zeros((max_boxes, 5))
+if len(box) > 0:
+    # np.random.shuffle(box)
+    if len(box) > max_boxes:
+        box = box[:max_boxes]
+    box_data[:len(box)] = box
+box_datas_array = np.expand_dims(box_data, axis=0)
 
 
 assert (box_datas_array[..., 4] < num_classes).all(), 'class id must be less than num_classes'
@@ -561,7 +488,7 @@ true_boxes[..., 2:4] = boxes_wh / input_shape[::-1]
 # -----------------------------------------------------------#
 #   [9,2] -> [1,9,2]
 # -----------------------------------------------------------#
-anchors = np.expand_dims(anchors, 0)
+anchors = np.expand_dims(anchors_all, 0)
 anchor_maxes = anchors / 2.
 anchor_mins = -anchor_maxes
 
@@ -599,11 +526,11 @@ for b in range(m):
     box_area = wh[..., 0] * wh[..., 1]
     anchor_area = anchors[..., 0] * anchors[..., 1]
 
-    iou = intersect_area / (box_area + anchor_area - intersect_area)
+    iou = intersect_area / (box_area + anchor_area - intersect_area) # (n,9)
     # -----------------------------------------------------------#
     #   维度是[n,] 感谢 消尽不死鸟 的提醒
     # -----------------------------------------------------------#
-    best_anchor = np.argmax(iou, axis=-1)
+    best_anchor = np.argmax(iou, axis=-1) #(6,5,5,5,6)# 索引为5的anchor在26*26的特征图上同时预测3个物体
 
     for t, n in enumerate(best_anchor):
         #   找到每个真实框所属的特征层，
@@ -624,7 +551,7 @@ for b in range(m):
                 #   最后的85可以拆分成4+1+80，4代表的是框的中心与宽高、
                 #   1代表的是置信度、80代表的是种类
                 # -----------------------------------------------------------#
-                y_true[l][b, j, i, k, 0:4] = true_boxes[b, t, 0:4]
+                y_true[l][b, j, i, k, 0:4] = true_boxes[b, t, 0:4]#   J是第几行，所以算的是ymin的长度  i是第几列，要计算x方向的长度
                 y_true[l][b, j, i, k, 4] = 1
                 y_true[l][b, j, i, k, 5 + c] = 1
 
@@ -660,35 +587,34 @@ num_pos = 0
 #   yolo_outputs是一个列表，包含三个特征层，shape分别为(m,13,13,3,85),(m,26,26,3,85),(m,52,52,3,85)。
 # ---------------------------------------------------------------------------------------------------#
 def loop_body(b, ignore_mask):
-    #   取出n个真实框：n,4
+    #   取出n个真实框：(n,4)
     #  tf.boolean_mask的作用是通过布尔值过滤元素
     true_box = tf.boolean_mask(y_true[l][b, ..., 0:4], object_mask_bool[b, ..., 0])
+    print(true_box.shape)
     # -----------------------------------------------------------#
     #   计算预测框与真实框的iou
     #   pred_box    13,13,3,4 预测框的坐标
     #   true_box    n,4 真实框的坐标
     #   iou         13,13,3,n 预测框和真实框的iou
     # -----------------------------------------------------------#
-    iou = box_iou(pred_box[b], true_box)
-
+    iou = box_iou(pred_box[b], true_box)  # (13, 13, 3, ?)
+    print(iou.shape)
     # -----------------------------------------------------------#
-    #   best_iou    13,13,3 每个特征点与真实框的最大重合程度
+    #   best_iou    (13,13,3) 每个特征点的3个预测框与真实框的最大重合程度
     # -----------------------------------------------------------#
     best_iou = K.max(iou, axis=-1)
+    print(best_iou.shape)
 
-    # -----------------------------------------------------------#
-    #   判断预测框和真实框的最大iou小于ignore_thresh
-    #   则认为该预测框没有与之对应的真实框
-    #   该操作的目的是：
-    #   忽略预测结果与真实框非常对应特征点，因为这些框已经比较准了
-    #   不适合当作负样本，所以忽略掉。
-    # -----------------------------------------------------------#
     ignore_mask = ignore_mask.write(b, K.cast(best_iou < ignore_thresh, K.dtype(true_box)))
+    print('ignore_mask_shape:', K.cast(best_iou < ignore_thresh, K.dtype(true_box)).shape)
+
     return b + 1, ignore_mask
 
 
-for l in range(num_layers):
+for l in range(num_layers-2):
+
     print('l:', l)
+
     # -----------------------------------------------------------#
     #   以第一个特征层(m,13,13,3,85)为例子
     #   取出该特征层中存在目标的点的位置。(m,13,13,3,1)
@@ -700,7 +626,8 @@ for l in range(num_layers):
     true_class_probs = y_true[l][..., 5:]
     if label_smoothing:
         true_class_probs = _smooth_labels(true_class_probs, label_smoothing)
-
+    #标签平滑的意思比如真实值编码为[1, 0, 0], 现在将真实值变为[0.95, 0.025, 0.025]
+    #其实就是对训练过程进行惩罚。
     # -----------------------------------------------------------#
     #   将yolo_outputs的特征层输出进行处理、获得四个返回值
     #   其中：
@@ -759,10 +686,6 @@ for l in range(num_layers):
     # ------------------------------------------------------------------------------#
     #   如果该位置本来有框，那么计算1与置信度的交叉熵
     #   如果该位置本来没有框，那么计算0与置信度的交叉熵
-    #   在这其中会忽略一部分样本，这些被忽略的样本满足条件best_iou<ignore_thresh
-    #   该操作的目的是：
-    #   忽略预测结果与真实框非常对应特征点，因为这些框已经比较准了
-    #   不适合当作负样本，所以忽略掉。
     #   binary_cross_entropy是二分类的交叉熵，实际是多分类softmax_cross_entropy的一种特殊情况，
     #   当多分类中，类别只有两类时，即0或者1，即为二分类，二分类也是一个逻辑回归问题，也可以套用逻辑回归的损失函数。
 
@@ -791,7 +714,15 @@ for l in range(num_layers):
 sess = K.get_session()
 loss = sess.run(loss)
 location_loss = sess.run(location_loss)
+object_mask_num = sess.run(K.sum(K.cast(object_mask, tf.float32)))
+ignore_mask = sess.run(ignore_mask)
+object_mask = sess.run(object_mask)
+confidence_loss = sess.run(confidence_loss)
 num_pos = sess.run(num_pos)
+y_true = sess.run(y_true)
 print('loss:', loss)
 print('location_loss:', location_loss)
+# print('ignore_mask',ignore_mask)
+
+print('object_mask_num:', object_mask_num)
 print('num_pos:', num_pos)
